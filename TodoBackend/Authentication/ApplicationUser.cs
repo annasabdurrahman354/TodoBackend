@@ -13,9 +13,22 @@ namespace TodoBackend.Authentication
         [Required(ErrorMessage = "Last name is required")]
         public string Lastname { get; set; }
 
+        public string ImageName { get; set; }
+
+        public string Country { get; set; }
+
+        public string City { get; set; }
+
+        public string Address { get; set; }
+
+        public int ZipCode { get; set; }
+
+        public string About { get; set; }
+
         //[Required(ErrorMessage = "Country is required")]
         //public string Country { get; set; }
 
         public virtual ICollection<TodoModel> Todos { get; set; }
+        public virtual ICollection<PostModel> Posts { get; set; }
     }
 }

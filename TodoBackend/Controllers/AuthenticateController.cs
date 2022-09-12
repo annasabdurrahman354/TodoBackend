@@ -12,23 +12,26 @@ using System.Text;
 using System.Threading.Tasks;
 using TodoBackend.Services;
 using TodoBackend.Authentication;
+using TodoBackend.Template;
 
 namespace TodoBackend.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/account")]
     [ApiController]
     public class AuthenticateController : ControllerBase
     {
         private readonly UserManager<ApplicationUser> userManager;
         private readonly RoleManager<IdentityRole> roleManager;
-        private readonly IConfiguration _configuration;
-        const string FRONT_END_URL = "http://localhost:3000/";
+        private readonly IConfiguration configuration;
+        private readonly EmailTemplate emailTemplate = new EmailTemplate();
+        private const string FRONT_END_URL = "http://localhost:3000/";
+        
 
         public AuthenticateController(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager, IConfiguration configuration)
         {
             this.userManager = userManager;
             this.roleManager = roleManager;
-            _configuration = configuration;
+            this.configuration = configuration;
         }
 
         [HttpPost]
@@ -51,11 +54,11 @@ namespace TodoBackend.Controllers
                     authClaims.Add(new Claim(ClaimTypes.Role, userRole));
                 }
 
-                var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:Secret"]));
+                var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["JWT:Secret"]));
 
                 var token = new JwtSecurityToken(
-                    issuer: _configuration["JWT:ValidIssuer"],
-                    audience: _configuration["JWT:ValidAudience"],
+                    issuer: configuration["JWT:ValidIssuer"],
+                    audience: configuration["JWT:ValidAudience"],
                     expires: DateTime.Now.AddHours(3),
                     claims: authClaims,
                     signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256)
@@ -63,19 +66,16 @@ namespace TodoBackend.Controllers
 
                 return Ok(new
                 {
-                    username = user.UserName,
-                    firstname = user.Firstname,
-                    lastname = user.Lastname,
-                    token = new JwtSecurityTokenHandler().WriteToken(token),
+                    accessToken = new JwtSecurityTokenHandler().WriteToken(token),
+                    user,
                     expiration = token.ValidTo
                 });
             }
             else if (user != null && await userManager.CheckPasswordAsync(user, model.Password) && await userManager.IsEmailConfirmedAsync(user) == false)
             {
-                //Redirect("localhost:3120/confirm-email")
-                return StatusCode(StatusCodes.Status401Unauthorized, new ResponseModel { Status = "Error", Message = "User account has not been confirmed!" });
+                return Unauthorized("User account has not been confirmed!");
             }
-            return Unauthorized();
+            return Unauthorized("Something went wrong");
         }
 
         [HttpPost]
@@ -84,7 +84,7 @@ namespace TodoBackend.Controllers
         {
             var userExists = await userManager.FindByNameAsync(model.Username);
             if (userExists != null)
-                return StatusCode(StatusCodes.Status500InternalServerError, new ResponseModel { Status = "Error", Message = "User already exists!" });
+                return Conflict("User already exists!");
 
             ApplicationUser user = new ApplicationUser()
             {
@@ -99,23 +99,16 @@ namespace TodoBackend.Controllers
             var result = await userManager.CreateAsync(user, model.Password);
             if (!result.Succeeded)
                 return StatusCode(StatusCodes.Status500InternalServerError, result.Errors);
-
-            var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
-            var confirmationLink = Url.Action("VerifyEmail", "Authenticate", new { email = user.Email, token }, Request.Scheme);
-            EmailSender emailHelper = new EmailSender();
             try
             {
-                await emailHelper.SendEmailAsync(user.Email, "Verify Your Email",
-                    "<html>" +
-                    "<body> <h3>Verify your email by clicking this link: </h3> <p>" + confirmationLink + "</p> </body>" +
-                    "</html>");
+                await SendVerificationEmail(user.UserName);
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, new ResponseModel { Status = "Error", Message = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
             }
 
-            return Ok(new ResponseModel { Status = "Success", Message = "User created successfully!" });
+            return Ok("User created successfully!");
         }
 
         [HttpPost]
@@ -124,7 +117,7 @@ namespace TodoBackend.Controllers
         {
             var userExists = await userManager.FindByNameAsync(model.Username);
             if (userExists != null)
-                return StatusCode(StatusCodes.Status500InternalServerError, new ResponseModel { Status = "Error", Message = "User already exists!" });
+                return Conflict("User already exists!");
 
             ApplicationUser user = new ApplicationUser()
             {
@@ -136,17 +129,17 @@ namespace TodoBackend.Controllers
             if (!result.Succeeded)
                 return StatusCode(StatusCodes.Status500InternalServerError, result.Errors);
 
-            if (!await roleManager.RoleExistsAsync(UserRoles.Admin))
-                await roleManager.CreateAsync(new IdentityRole(UserRoles.Admin));
-            if (!await roleManager.RoleExistsAsync(UserRoles.User))
-                await roleManager.CreateAsync(new IdentityRole(UserRoles.User));
+            if (!await roleManager.RoleExistsAsync(UserRolesModel.Admin))
+                await roleManager.CreateAsync(new IdentityRole(UserRolesModel.Admin));
+            if (!await roleManager.RoleExistsAsync(UserRolesModel.User))
+                await roleManager.CreateAsync(new IdentityRole(UserRolesModel.User));
 
-            if (await roleManager.RoleExistsAsync(UserRoles.Admin))
+            if (await roleManager.RoleExistsAsync(UserRolesModel.Admin))
             {
-                await userManager.AddToRoleAsync(user, UserRoles.Admin);
+                await userManager.AddToRoleAsync(user, UserRolesModel.Admin);
             }
 
-            return Ok(new ResponseModel { Status = "Success", Message = "User created successfully!" });
+            return Ok("User created successfully!");
         }
 
         [HttpGet]
@@ -156,13 +149,12 @@ namespace TodoBackend.Controllers
             var user = await userManager.FindByEmailAsync(email);
             if (user == null)
             {
-                return BadRequest(new ResponseModel { Status = "Error", Message = "User not found!" });
+                return NotFound("User not found!");
             }
             else if (user != null && await userManager.IsEmailConfirmedAsync(user) == true)
             {
-                return BadRequest(new ResponseModel { Status = "Error", Message = "User's email has been confirmed!" });
+                return Conflict("Users email has been confirmed!");
             }
-
             await userManager.ConfirmEmailAsync(user, token);
             return Redirect(FRONT_END_URL + "login");
         }
@@ -174,19 +166,19 @@ namespace TodoBackend.Controllers
             var user = await userManager.FindByNameAsync(username);
             if (user == null)
             {
-                return BadRequest(new ResponseModel { Status = "Error", Message = "User not found!" });
+                return NotFound("User not found!");
             }
             else if (user != null && await userManager.IsEmailConfirmedAsync(user) == true)
             {
-                return Ok(new ResponseModel { Status = "Success", Message = 1 });
+                return Ok(true);
             }
             else if (user != null && await userManager.IsEmailConfirmedAsync(user) == false)
             {
-                return Ok(new ResponseModel { Status = "Success", Message = 0 });
+                return Ok(false);
             }
             else
             {
-                return BadRequest(new ResponseModel { Status = "Error", Message = "An error ocurred!" });
+                return StatusCode(StatusCodes.Status500InternalServerError, "Something went wrong!");
             }
         }
 
@@ -197,11 +189,11 @@ namespace TodoBackend.Controllers
             var user = await userManager.FindByNameAsync(username);
             if (user == null)
             {
-                return BadRequest(new ResponseModel { Status = "Error", Message = "User not found!" });
+                return NotFound("User not found!");
             }
             else if (user != null && await userManager.IsEmailConfirmedAsync(user) == true)
             {
-                return BadRequest(new ResponseModel { Status = "Error", Message = "User's email has been confirmed!" });
+                return Conflict("Users email has been confirmed!");
             }
 
             var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
@@ -209,17 +201,14 @@ namespace TodoBackend.Controllers
             EmailSender emailHelper = new EmailSender();
             try
             {
-                await emailHelper.SendEmailAsync(user.Email, "Verify Your Email", 
-                    "<html>" +
-                    "<body> <h3>Verify your email by clicking this link: </h3> <p>" + confirmationLink + "</p> </body>" +
-                    "</html>");
+                await emailHelper.SendEmailAsync(user.Email, "Verify your email!", emailTemplate.EmailVerification(confirmationLink));
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, new ResponseModel { Status = "Error", Message = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
             }
             
-            return Ok(new ResponseModel { Status = "Success", Message = confirmationLink });
+            return Ok(confirmationLink);
         }
 
         [HttpGet]
@@ -228,22 +217,19 @@ namespace TodoBackend.Controllers
         {
             var user = await userManager.FindByEmailAsync(email);
             if (user == null)
-                return BadRequest(new ResponseModel { Status = "Error", Message = "User not found!" });
+                return NotFound("User not found!");
             var token = await userManager.GeneratePasswordResetTokenAsync(user);
-            var confirmationLink = FRONT_END_URL + "reset-password/" + email + "/" + token;
+            var confirmationLink = FRONT_END_URL + "reset-password/" + email + "/" + token.Replace("/", "%2F");
             EmailSender emailHelper = new EmailSender();
             try
             {
-                await emailHelper.SendEmailAsync(user.Email, "Forgot Password Email",
-                    "<html>" +
-                    "<body> <h3>Change your account password by clicking this link: </h3> <p>" + confirmationLink + "</p> </body>" +
-                    "</html>");
+                await emailHelper.SendEmailAsync(user.Email, "Do you forget your password?", emailTemplate.ForgetPassword(confirmationLink));
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, new ResponseModel { Status = "Error", Message = ex.Message } );
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
             }
-            return Ok(new ResponseModel { Status = "Success", Message = new { email = user.Email, token = token, resetPasswordLink = confirmationLink} });
+            return Ok(new {email = user.Email, token = token, resetPasswordLink = confirmationLink});
         }
 
         [HttpPost]
@@ -252,21 +238,27 @@ namespace TodoBackend.Controllers
         {
             var user = await userManager.FindByEmailAsync(email);
             if (user == null)
-                return BadRequest(new ResponseModel { Status = "Error", Message = "User not found!" });
+                return NotFound("User not found!");
             if (await userManager.VerifyUserTokenAsync(user, userManager.Options.Tokens.PasswordResetTokenProvider, "ResetPassword", token))
             {
                 var resetPassResult = await userManager.ResetPasswordAsync(user, token, resetPasswordModel.NewPassword);
                 if (!resetPassResult.Succeeded)
                 {
-                    StatusCode(StatusCodes.Status500InternalServerError, new ResponseModel { Status = "Error", Message = resetPassResult.Errors });
+                    StatusCode(StatusCodes.Status500InternalServerError, resetPassResult.Errors);
                 }
             }
             else
             {
-                StatusCode(StatusCodes.Status500InternalServerError, new ResponseModel { Status = "Error", Message = "Token is invalid" });
+                BadRequest("Token is invalid");
             }
-            return Ok(new ResponseModel { Status = "Success", Message = "Password changed succesfully" });
+            return Ok("Password changed succesfully");
         }
+
+
+
+
+
+
 
         [HttpPost]
         [Route("change-email")]
@@ -275,49 +267,40 @@ namespace TodoBackend.Controllers
             var user = await userManager.FindByNameAsync(changeEmailModel.Username);
             if (user == null)
             {
-                return BadRequest(new ResponseModel { Status = "Error", Message = "User not found!" });
+                return NotFound("User not found!");
             }
             if (!await userManager.CheckPasswordAsync(user, changeEmailModel.Password))
             {
-                return BadRequest(new ResponseModel { Status = "Error", Message = "Wrong paswword!" });
+                return BadRequest("Wrong paswword!");
             }
             if (await userManager.FindByEmailAsync(changeEmailModel.NewEmail) != null)
             {
-                return BadRequest(new ResponseModel { Status = "Error", Message = "New email has been used!" });
+                return Conflict("New email has been used!");
             }
             var token = await userManager.GenerateChangeEmailTokenAsync(user, changeEmailModel.NewEmail);
             var changePasswordResult = await userManager.ChangeEmailAsync(user, changeEmailModel.NewEmail, token);
             if (!changePasswordResult.Succeeded)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, new ResponseModel { Status = "Error", Message = changePasswordResult.Errors });
+                return StatusCode(StatusCodes.Status500InternalServerError, changePasswordResult.Errors);
             }
-            return Ok(new ResponseModel { Status = "Success", Message = "Email changed succesfully" });
+            return Ok("Email changed succesfully");
         }
 
         [HttpPost]
         [Route("update-user")]
-        public async Task<IActionResult> UpdateUser([FromBody] UpdateUserModel updateUserModel)
+        public async Task<IActionResult> UpdateUser([FromBody] UserModel updateUserModel)
         {
             var user = await userManager.FindByNameAsync(updateUserModel.Username);
             if (user == null)
             {
-                return BadRequest(new ResponseModel { Status = "Error", Message = "User not found!" });
+                return NotFound("User not found!");
             }
             var updateUserResult = await userManager.UpdateAsync(user);
             if (!updateUserResult.Succeeded)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, new ResponseModel { Status = "Error", Message = updateUserResult.Errors });
+                return StatusCode(StatusCodes.Status500InternalServerError, updateUserResult.Errors);
             }
-            return Ok(new ResponseModel { Status = "Success", Message = "Email changed succesfully" });
-
-
-            if (updateUserModel.Username == null)
-            {
-                return NotFound();
-            }
-            var userToUpdate = await userManager.FindByNameAsync(updateUserModel.Username);
-
-           
+            return Ok("Email changed succesfully");
         }
     }
 }

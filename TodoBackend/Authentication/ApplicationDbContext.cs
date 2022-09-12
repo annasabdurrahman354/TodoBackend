@@ -11,11 +11,15 @@ namespace TodoBackend.Authentication
         {
 
         }
+        public DbSet<TagModel> Tag { get; set; }
         public DbSet<TodoModel> Todo { get; set; }
+        public DbSet<PostModel> Post { get; set; }
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
+            builder.Entity<TagModel>().ToTable("Tag");
             builder.Entity<TodoModel>().ToTable("Todo");
+            builder.Entity<PostModel>().ToTable("Post");
             builder.Entity<ApplicationUser>(entity =>
             {
                 entity.ToTable(name: "User");
@@ -51,6 +55,13 @@ namespace TodoBackend.Authentication
             });
             builder.Entity<ApplicationUser>()
                .HasMany(p => p.Todos);
+            builder.Entity<ApplicationUser>()
+               .HasMany(p => p.Posts);
+            builder.Entity<PostModel>()
+               .HasMany(p => p.Tags);
+            builder.Entity<PostModel>()
+               .Property(b => b.CreatedDate)
+               .HasDefaultValueSql("getdate()");
         }
     }
 }

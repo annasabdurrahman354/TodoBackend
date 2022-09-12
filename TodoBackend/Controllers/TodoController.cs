@@ -9,7 +9,7 @@ using TodoBackend.Repositories;
 
 namespace TodoBackend.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/todo")]
     [ApiController]
     public class TodoController : ControllerBase
     {
@@ -26,6 +26,21 @@ namespace TodoBackend.Controllers
             try
             {
                 return (await todoRepository.GetAll()).ToList();
+            }
+            catch (Exception)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    "Error retrieving data from the database");
+            }
+        }
+
+        [HttpGet]
+        [Route("user/{userId}")]
+        public async Task<ActionResult<IEnumerable<TodoModel>>> GetUserTodos(string userId)
+        {
+            try
+            {
+                return (await todoRepository.GetUserTodos(userId)).ToList();
             }
             catch (Exception)
             {
@@ -112,20 +127,6 @@ namespace TodoBackend.Controllers
             {
                 return StatusCode(StatusCodes.Status500InternalServerError,
                     "Error deleting data");
-            }
-        }
-
-        [HttpGet("/user={id:int}")]
-        public async Task<ActionResult<IEnumerable<TodoModel>>> GetUserTodos(int id)
-        {
-            try
-            {
-                return (await todoRepository.GetUserTodos(id)).ToList();
-            }
-            catch (Exception)
-            {
-                return StatusCode(StatusCodes.Status500InternalServerError,
-                    "Error retrieving data from the database");
             }
         }
     }

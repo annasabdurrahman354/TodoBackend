@@ -59,7 +59,6 @@ namespace TodoBackend
                 options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
                 options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
             })
-
             // Adding Jwt Bearer  
             .AddJwtBearer(options =>
             {
@@ -77,6 +76,7 @@ namespace TodoBackend
 
             services.AddTransient<IEmailSender, EmailSender>();
             services.AddScoped<ITodoRepository, TodoRepository>();
+            services.AddScoped<IPostRepository, PostRepository>();
             services.Configure<DataProtectionTokenProviderOptions>(options =>
                 options.TokenLifespan = TimeSpan.FromHours(2));
         }
@@ -89,6 +89,7 @@ namespace TodoBackend
                 app.UseDeveloperExceptionPage();
             }
 
+            app.UseStaticFiles();
             app.UseRouting();
             app.UseAuthentication();
             app.UseAuthorization();

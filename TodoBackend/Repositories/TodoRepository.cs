@@ -40,7 +40,7 @@ namespace TodoBackend.Repositories
             {
                 result.Title = todo.Title;
                 result.Description = todo.Description;
-                result.ImageUrl = todo.ImageUrl;
+                result.ImageName = todo.ImageName;
                 result.Status = todo.Status;
 
                 await appDbContext.SaveChangesAsync();
@@ -64,9 +64,9 @@ namespace TodoBackend.Repositories
             return null;
         }
 
-        public async Task<IEnumerable<TodoModel>> GetUserTodos(int id)
+        public async Task<IEnumerable<TodoModel>> GetUserTodos(string id)
         {
-            return await appDbContext.Todo.Where(e => e.Id == id).ToListAsync(); ;
+            return await appDbContext.Todo.Where(e => e.UserId == id).ToListAsync(); ;
         }
     }
 }

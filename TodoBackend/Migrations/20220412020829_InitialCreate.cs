@@ -41,7 +41,8 @@ namespace TodoBackend.Migrations
                     LockoutEnabled = table.Column<bool>(nullable: false),
                     AccessFailedCount = table.Column<int>(nullable: false),
                     Firstname = table.Column<string>(nullable: false),
-                    Lastname = table.Column<string>(nullable: false)
+                    Lastname = table.Column<string>(nullable: false),
+                    ImageName = table.Column<string>(nullable: true)
                 },
                 constraints: table =>
                 {
@@ -70,6 +71,32 @@ namespace TodoBackend.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "Post",
+                columns: table => new
+                {
+                    Id = table.Column<int>(nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Title = table.Column<string>(nullable: false),
+                    Description = table.Column<string>(nullable: false),
+                    ThumbnailName = table.Column<string>(nullable: true),
+                    Content = table.Column<string>(nullable: false),
+                    MetaTitle = table.Column<string>(nullable: false),
+                    MetaDescription = table.Column<string>(nullable: false),
+                    CreatedDate = table.Column<DateTime>(nullable: false, defaultValueSql: "getdate()"),
+                    UserId = table.Column<string>(nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Post", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Post_User_UserId",
+                        column: x => x.UserId,
+                        principalTable: "User",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Todo",
                 columns: table => new
                 {
@@ -77,7 +104,7 @@ namespace TodoBackend.Migrations
                         .Annotation("SqlServer:Identity", "1, 1"),
                     Title = table.Column<string>(nullable: false),
                     Description = table.Column<string>(nullable: false),
-                    ImageUrl = table.Column<string>(nullable: true),
+                    ImageName = table.Column<string>(nullable: true),
                     Status = table.Column<bool>(type: "bit", nullable: false),
                     UserId = table.Column<string>(nullable: true)
                 },
@@ -177,6 +204,31 @@ namespace TodoBackend.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "Tag",
+                columns: table => new
+                {
+                    Id = table.Column<int>(nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Title = table.Column<string>(nullable: false),
+                    PostId = table.Column<int>(nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Tag", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Tag_Post_PostId",
+                        column: x => x.PostId,
+                        principalTable: "Post",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Post_UserId",
+                table: "Post",
+                column: "UserId");
+
             migrationBuilder.CreateIndex(
                 name: "RoleNameIndex",
                 table: "Role",
@@ -188,6 +240,11 @@ namespace TodoBackend.Migrations
                 name: "IX_RoleClaims_RoleId",
                 table: "RoleClaims",
                 column: "RoleId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Tag_PostId",
+                table: "Tag",
+                column: "PostId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Todo_UserId",
@@ -228,6 +285,9 @@ namespace TodoBackend.Migrations
                 name: "RoleClaims");
 
             migrationBuilder.DropTable(
+                name: "Tag");
+
+            migrationBuilder.DropTable(
                 name: "Todo");
 
             migrationBuilder.DropTable(
@@ -241,6 +301,9 @@ namespace TodoBackend.Migrations
 
             migrationBuilder.DropTable(
                 name: "UserTokens");
+
+            migrationBuilder.DropTable(
+                name: "Post");
 
             migrationBuilder.DropTable(
                 name: "Role");
